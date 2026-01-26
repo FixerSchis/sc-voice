@@ -21,7 +21,7 @@ A voice-to-text typing assistant designed for VR gaming and hands-free text inpu
 
 1. Clone this repository:
    ```bash
-   git clone https://github.com/yourusername/sc-voice.git
+   git clone https://github.com/FixerSchis/sc-voice.git
    cd sc-voice
    ```
 
@@ -69,7 +69,7 @@ Edit the `.env` file to customize settings:
 
 ### Running Compiled Release
 
-Pre-built executables are automatically created for Windows, Linux, and macOS. Download the latest release from the [Releases page](https://github.com/yourusername/sc-voice/releases) and extract the archive for your platform.
+Pre-built executables are automatically created for Windows, Linux, and macOS. Download the latest release from the [Releases page](https://github.com/FixerSchis/sc-voice/releases) and extract the archive for your platform.
 
 1. Extract the archive for your operating system
 2. Create a `.env` file in the same directory as the executable (you can copy `.env.example` as a template)
