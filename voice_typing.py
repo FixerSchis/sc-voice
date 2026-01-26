@@ -371,10 +371,31 @@ class VoiceTypingAssistant:
                 if len(part) == 1:
                     char_pressed = False
                     for key in self.pressed_keys:
-                        # Check by character (works for both regular and numpad numbers)
-                        if isinstance(key, KeyCode) and key.char == part:
-                            char_pressed = True
-                            break
+                        # Check by character (works for regular number keys)
+                        if isinstance(key, KeyCode):
+                            if key.char == part:
+                                char_pressed = True
+                                break
+                            # If char is None (like numpad keys), check by virtual key code
+                            elif key.char is None:
+                                vk = getattr(key, 'vk', None)
+                                if vk is not None:
+                                    # Map characters to VK codes (Windows)
+                                    vk_map = {
+                                        '0': [48, 96],  # Regular 0 and numpad 0
+                                        '1': [49, 97],
+                                        '2': [50, 98],
+                                        '3': [51, 99],
+                                        '4': [52, 100],
+                                        '5': [53, 101],
+                                        '6': [54, 102],
+                                        '7': [55, 103],
+                                        '8': [56, 104],
+                                        '9': [57, 105],
+                                    }
+                                    if part in vk_map and vk in vk_map[part]:
+                                        char_pressed = True
+                                        break
                     if not char_pressed:
                         return False
                 else:
