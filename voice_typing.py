@@ -35,8 +35,8 @@ class VoiceTypingAssistant:
         # Audio recording parameters from environment
         self.CHANNELS = 1
         self.RATE = int(os.getenv("SAMPLE_RATE", "16000"))
-        self.device_index = int(os.getenv("AUDIO_DEVICE_INDEX", "0"))
-        self.SILENCE_THRESHOLD = 500  # Adjust based on your microphone
+        self.DEVICE_INDEX = int(os.getenv("AUDIO_DEVICE_INDEX", "0"))
+        self.SILENCE_THRESHOLD = int(os.getenv("SILENCE_THRESHOLD", "500"))
         self.SILENCE_DURATION = float(os.getenv("SILENCE_TIMEOUT", "1.0"))
 
         # Hotkey configuration
@@ -58,7 +58,7 @@ class VoiceTypingAssistant:
 
         print("Voice Typing Assistant initialized")
         print(f"Hotkey: {self.hotkey_str}")
-        print(f"Audio device: {self.device_index}")
+        print(f"Audio device: {self.DEVICE_INDEX}")
         print(f"Silence timeout: {self.SILENCE_DURATION} seconds")
 
     def audio_callback(self, indata, frames, time_info, status):
@@ -105,7 +105,7 @@ class VoiceTypingAssistant:
 
         # Start recording with callback
         self.stream = sd.InputStream(
-            device=self.device_index,
+            device=self.DEVICE_INDEX,
             channels=self.CHANNELS,
             samplerate=self.RATE,
             callback=self.audio_callback,
