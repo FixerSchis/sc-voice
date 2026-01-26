@@ -58,6 +58,7 @@ class VoiceTypingAssistant:
 
         print("Voice Typing Assistant initialized")
         print(f"Hotkey: {self.hotkey_str}")
+        print(f"Parsed hotkey: {'+'.join(self.parse_hotkey())}")
         print(f"Audio device: {self.DEVICE_INDEX}")
         print(f"Silence timeout: {self.SILENCE_DURATION} seconds")
 
@@ -119,8 +120,6 @@ class VoiceTypingAssistant:
 
         self.is_recording = False
         print("Recording stopped. Processing...")
-
-        # Note: Stream stopping and transcription now handled in main loop
 
     def transcribe_and_type(self):
         """Transcribe audio using OpenAI API and type the result."""
@@ -295,33 +294,95 @@ class VoiceTypingAssistant:
         finally:
             self.cleanup()
 
+    def parse_hotkey(self):
+        """Parse the hotkey string into a list of key identifiers."""
+        if not hasattr(self, '_parsed_hotkey'):
+            parts = [p.strip().lower() for p in self.hotkey_str.split('+')]
+            self._parsed_hotkey = parts
+        return self._parsed_hotkey
+
     def is_hotkey_pressed(self):
         """Check if the configured hotkey is currently pressed."""
-        ctrl_pressed = (
-            Key.ctrl_l in self.pressed_keys or Key.ctrl_r in self.pressed_keys
-        )
-        alt_pressed = Key.alt_l in self.pressed_keys or Key.alt_r in self.pressed_keys
-
-        # For ctrl+alt+0, check if we have the right combination
-        if self.hotkey_str == "ctrl+alt+0":
-            # Look for the '0' key (can be regular 0 or numpad 0)
-            zero_pressed = False
-            for key in self.pressed_keys:
-                # Check for KeyCode with char '0'
-                if isinstance(key, KeyCode) and key.char == "0":
-                    zero_pressed = True
-                    break
-                # Also check for raw key codes that represent '0'
-                elif hasattr(key, "vk") and key.vk in [
-                    48,
-                    96,
-                ]:  # 48 = '0', 96 = numpad '0'
-                    zero_pressed = True
-                    break
-            return ctrl_pressed and alt_pressed and zero_pressed
-
-        # Default case - just check for ctrl+alt
-        return ctrl_pressed and alt_pressed
+        hotkey_parts = self.parse_hotkey()
+        
+        # Map modifier names to their Key objects
+        modifier_map = {
+            'ctrl': (Key.ctrl_l, Key.ctrl_r),
+            'control': (Key.ctrl_l, Key.ctrl_r),
+            'alt': (Key.alt_l, Key.alt_r),
+            'shift': (Key.shift_l, Key.shift_r),
+            'shift_l': (Key.shift_l,),
+            'shift_r': (Key.shift_r,),
+            'ctrl_l': (Key.ctrl_l,),
+            'ctrl_r': (Key.ctrl_r,),
+            'alt_l': (Key.alt_l,),
+            'alt_r': (Key.alt_r,),
+            'cmd': (Key.cmd_l, Key.cmd_r),
+            'cmd_l': (Key.cmd_l,),
+            'cmd_r': (Key.cmd_r,),
+        }
+        
+        # Map special key names to Key objects
+        special_key_map = {
+            'space': Key.space,
+            'enter': Key.enter,
+            'tab': Key.tab,
+            'esc': Key.esc,
+            'escape': Key.esc,
+            'backspace': Key.backspace,
+            'delete': Key.delete,
+            'up': Key.up,
+            'down': Key.down,
+            'left': Key.left,
+            'right': Key.right,
+            'home': Key.home,
+            'end': Key.end,
+            'page_up': Key.page_up,
+            'page_down': Key.page_down,
+            'insert': Key.insert,
+            'f1': Key.f1,
+            'f2': Key.f2,
+            'f3': Key.f3,
+            'f4': Key.f4,
+            'f5': Key.f5,
+            'f6': Key.f6,
+            'f7': Key.f7,
+            'f8': Key.f8,
+            'f9': Key.f9,
+            'f10': Key.f10,
+            'f11': Key.f11,
+            'f12': Key.f12,
+        }
+        
+        # Check each part of the hotkey
+        for part in hotkey_parts:
+            # Check if it's a modifier
+            if part in modifier_map:
+                modifier_keys = modifier_map[part]
+                if not any(key in self.pressed_keys for key in modifier_keys):
+                    return False
+            # Check if it's a special key
+            elif part in special_key_map:
+                if special_key_map[part] not in self.pressed_keys:
+                    return False
+            # Check if it's a regular character key
+            else:
+                # Single character key
+                if len(part) == 1:
+                    char_pressed = False
+                    for key in self.pressed_keys:
+                        # Check by character (works for both regular and numpad numbers)
+                        if isinstance(key, KeyCode) and key.char == part:
+                            char_pressed = True
+                            break
+                    if not char_pressed:
+                        return False
+                else:
+                    # Unknown key format
+                    print(f"Warning: Unknown key '{part}' in hotkey '{self.hotkey_str}'")
+                    return False
+        
+        return True
 
     def toggle_recording(self):
         """Toggle recording on/off."""
