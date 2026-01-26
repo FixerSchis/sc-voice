@@ -77,10 +77,14 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
     
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -94,9 +98,26 @@ jobs:
           mkdir -p release-files
           find artifacts -name "*.zip" -exec cp {} release-files/ \;
 
+      - name: Generate version tag
+        id: tag
+        run: |
+          VERSION=$(date +'v%Y.%m.%d-%H%M%S')
+          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
+          TAG="${VERSION}-${SHORT_SHA}"
+          echo "tag=${TAG}" >> $GITHUB_OUTPUT
+          echo "Created tag: ${TAG}"
+
+      - name: Create git tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.tag.outputs.tag }}" -m "Release ${{ steps.tag.outputs.tag }}"
+          git push origin "${{ steps.tag.outputs.tag }}"
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
+          tag_name: ${{ steps.tag.outputs.tag }}
           files: release-files/*.zip
           generate_release_notes: true
           draft: false

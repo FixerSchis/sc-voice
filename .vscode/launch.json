@@ -3,23 +3,10 @@
     "configurations": [
         {
             "name": "Python: Voice Typing Assistant",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/voice_typing.py",
             "console": "integratedTerminal",
-            "justMyCode": true,
-            "python": "${command:python.interpreterPath}",
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "PYTHONPATH": "${workspaceFolder}"
-            }
-        },
-        {
-            "name": "Python: Voice Typing Assistant (External Terminal)",
-            "type": "python",
-            "request": "launch",
-            "program": "${workspaceFolder}/voice_typing.py",
-            "console": "externalTerminal",
             "justMyCode": true,
             "python": "${command:python.interpreterPath}",
             "cwd": "${workspaceFolder}",
