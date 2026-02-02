@@ -8,9 +8,9 @@ Polls keyboard state for reliable hotkey detection
 import sys
 import os
 import time
-import threading
 import tempfile
 import wave
+import csv
 import numpy as np
 import sounddevice as sd
 from pynput.keyboard import Controller as KeyboardController, Listener, Key, KeyCode
@@ -56,11 +56,70 @@ class VoiceTypingAssistant:
         # Initialize components
         self.keyboard_controller = KeyboardController()
 
+        # Load optional context (vocabulary hint for Whisper)
+        self.context_prompt = self._load_context()
+
         print("Voice Typing Assistant initialized")
         print(f"Hotkey: {self.hotkey_str}")
         print(f"Parsed hotkey: {'+'.join(self.parse_hotkey())}")
         print(f"Audio device: {self.DEVICE_INDEX}")
         print(f"Silence timeout: {self.SILENCE_DURATION} seconds")
+        if self.context_prompt:
+            print("Context file loaded: vocabulary hint enabled for transcription")
+        else:
+            print("No context file (context.csv) found; using default transcription")
+
+    def _get_app_directory(self):
+        """Return the directory of the executable (when frozen) or the script (when run directly)."""
+        if getattr(sys, "frozen", False):
+            return os.path.dirname(sys.executable)
+        return os.path.dirname(os.path.abspath(__file__))
+
+    def _load_context(self):
+        """
+        Load context terms from context.csv in the app directory.
+        The file is optional; if missing, returns None (no context).
+        CSV format: first column is the term; optional second column is a pronunciation hint
+        (e.g. "Zee-an" for Xi'an) so Whisper knows how to match speech to spelling.
+        Optional header row 'term' / 'word' / 'name' is skipped.
+        Terms are passed to Whisper as a hint to look out for these spellings, not a whitelist.
+        """
+        context_path = os.path.join(self._get_app_directory(), "context.csv")
+        if not os.path.isfile(context_path):
+            return None
+        terms = []
+        try:
+            with open(context_path, newline="", encoding="utf-8") as f:
+                reader = csv.reader(f)
+                for row in reader:
+                    if not row:
+                        continue
+                    word = row[0].strip()
+                    if not word:
+                        continue
+                    # Skip header row if it looks like a label
+                    if word.lower() in ("term", "word", "name") and len(terms) == 0:
+                        continue
+                    # Optional pronunciation hint: "term (pronunciation)" helps Whisper match speech
+                    pronunciation = (row[1].strip() if len(row) >= 2 else "") or ""
+                    if pronunciation and pronunciation.lower() not in (
+                        "pronunciation",
+                        "pronounciation",
+                    ):
+                        terms.append(f"{word} ({pronunciation})")
+                    else:
+                        terms.append(word)
+            if not terms:
+                return None
+            # Whisper prompt is max 224 tokens; comma-separated list is a spelling/pronunciation guide
+            prompt = ", ".join(terms)
+            # Truncate if extremely long (roughly 224 tokens ~ 800 chars to be safe)
+            if len(prompt) > 800:
+                prompt = prompt[:797] + "..."
+            return prompt
+        except Exception as e:
+            print(f"Warning: could not load context.csv: {e}")
+            return None
 
     def audio_callback(self, indata, frames, time_info, status):
         """Callback function for sounddevice recording."""
@@ -138,11 +197,16 @@ class VoiceTypingAssistant:
                     wav_file.setframerate(self.RATE)
                     wav_file.writeframes((audio_np * 32767).astype(np.int16).tobytes())
 
-            # Send to OpenAI API
+            # Send to OpenAI API (optional prompt biases Whisper toward context terms)
             with open(temp_filename, "rb") as audio_file:
-                transcript = self.client.audio.transcriptions.create(
-                    model="whisper-1", file=audio_file, response_format="text"
-                )
+                api_kwargs = {
+                    "model": "whisper-1",
+                    "file": audio_file,
+                    "response_format": "text",
+                }
+                if self.context_prompt:
+                    api_kwargs["prompt"] = self.context_prompt
+                transcript = self.client.audio.transcriptions.create(**api_kwargs)
 
             # Clean up temp file
             os.unlink(temp_filename)
@@ -296,64 +360,64 @@ class VoiceTypingAssistant:
 
     def parse_hotkey(self):
         """Parse the hotkey string into a list of key identifiers."""
-        if not hasattr(self, '_parsed_hotkey'):
-            parts = [p.strip().lower() for p in self.hotkey_str.split('+')]
+        if not hasattr(self, "_parsed_hotkey"):
+            parts = [p.strip().lower() for p in self.hotkey_str.split("+")]
             self._parsed_hotkey = parts
         return self._parsed_hotkey
 
     def is_hotkey_pressed(self):
         """Check if the configured hotkey is currently pressed."""
         hotkey_parts = self.parse_hotkey()
-        
+
         # Map modifier names to their Key objects
         modifier_map = {
-            'ctrl': (Key.ctrl_l, Key.ctrl_r),
-            'control': (Key.ctrl_l, Key.ctrl_r),
-            'alt': (Key.alt_l, Key.alt_r),
-            'shift': (Key.shift_l, Key.shift_r),
-            'shift_l': (Key.shift_l,),
-            'shift_r': (Key.shift_r,),
-            'ctrl_l': (Key.ctrl_l,),
-            'ctrl_r': (Key.ctrl_r,),
-            'alt_l': (Key.alt_l,),
-            'alt_r': (Key.alt_r,),
-            'cmd': (Key.cmd_l, Key.cmd_r),
-            'cmd_l': (Key.cmd_l,),
-            'cmd_r': (Key.cmd_r,),
+            "ctrl": (Key.ctrl_l, Key.ctrl_r),
+            "control": (Key.ctrl_l, Key.ctrl_r),
+            "alt": (Key.alt_l, Key.alt_r),
+            "shift": (Key.shift_l, Key.shift_r),
+            "shift_l": (Key.shift_l,),
+            "shift_r": (Key.shift_r,),
+            "ctrl_l": (Key.ctrl_l,),
+            "ctrl_r": (Key.ctrl_r,),
+            "alt_l": (Key.alt_l,),
+            "alt_r": (Key.alt_r,),
+            "cmd": (Key.cmd_l, Key.cmd_r),
+            "cmd_l": (Key.cmd_l,),
+            "cmd_r": (Key.cmd_r,),
         }
-        
+
         # Map special key names to Key objects
         special_key_map = {
-            'space': Key.space,
-            'enter': Key.enter,
-            'tab': Key.tab,
-            'esc': Key.esc,
-            'escape': Key.esc,
-            'backspace': Key.backspace,
-            'delete': Key.delete,
-            'up': Key.up,
-            'down': Key.down,
-            'left': Key.left,
-            'right': Key.right,
-            'home': Key.home,
-            'end': Key.end,
-            'page_up': Key.page_up,
-            'page_down': Key.page_down,
-            'insert': Key.insert,
-            'f1': Key.f1,
-            'f2': Key.f2,
-            'f3': Key.f3,
-            'f4': Key.f4,
-            'f5': Key.f5,
-            'f6': Key.f6,
-            'f7': Key.f7,
-            'f8': Key.f8,
-            'f9': Key.f9,
-            'f10': Key.f10,
-            'f11': Key.f11,
-            'f12': Key.f12,
+            "space": Key.space,
+            "enter": Key.enter,
+            "tab": Key.tab,
+            "esc": Key.esc,
+            "escape": Key.esc,
+            "backspace": Key.backspace,
+            "delete": Key.delete,
+            "up": Key.up,
+            "down": Key.down,
+            "left": Key.left,
+            "right": Key.right,
+            "home": Key.home,
+            "end": Key.end,
+            "page_up": Key.page_up,
+            "page_down": Key.page_down,
+            "insert": Key.insert,
+            "f1": Key.f1,
+            "f2": Key.f2,
+            "f3": Key.f3,
+            "f4": Key.f4,
+            "f5": Key.f5,
+            "f6": Key.f6,
+            "f7": Key.f7,
+            "f8": Key.f8,
+            "f9": Key.f9,
+            "f10": Key.f10,
+            "f11": Key.f11,
+            "f12": Key.f12,
         }
-        
+
         # Check each part of the hotkey
         for part in hotkey_parts:
             # Check if it's a modifier
@@ -378,20 +442,20 @@ class VoiceTypingAssistant:
                                 break
                             # If char is None (like numpad keys), check by virtual key code
                             elif key.char is None:
-                                vk = getattr(key, 'vk', None)
+                                vk = getattr(key, "vk", None)
                                 if vk is not None:
                                     # Map characters to VK codes (Windows)
                                     vk_map = {
-                                        '0': [48, 96],  # Regular 0 and numpad 0
-                                        '1': [49, 97],
-                                        '2': [50, 98],
-                                        '3': [51, 99],
-                                        '4': [52, 100],
-                                        '5': [53, 101],
-                                        '6': [54, 102],
-                                        '7': [55, 103],
-                                        '8': [56, 104],
-                                        '9': [57, 105],
+                                        "0": [48, 96],  # Regular 0 and numpad 0
+                                        "1": [49, 97],
+                                        "2": [50, 98],
+                                        "3": [51, 99],
+                                        "4": [52, 100],
+                                        "5": [53, 101],
+                                        "6": [54, 102],
+                                        "7": [55, 103],
+                                        "8": [56, 104],
+                                        "9": [57, 105],
                                     }
                                     if part in vk_map and vk in vk_map[part]:
                                         char_pressed = True
@@ -400,9 +464,11 @@ class VoiceTypingAssistant:
                         return False
                 else:
                     # Unknown key format
-                    print(f"Warning: Unknown key '{part}' in hotkey '{self.hotkey_str}'")
+                    print(
+                        f"Warning: Unknown key '{part}' in hotkey '{self.hotkey_str}'"
+                    )
                     return False
-        
+
         return True
 
     def toggle_recording(self):

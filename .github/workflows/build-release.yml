@@ -51,6 +51,7 @@ jobs:
           Copy-Item dist/voice_typing.exe release/
           Copy-Item .env.example release/
           Copy-Item README.md release/
+          Copy-Item context.csv release/
           Compress-Archive -Path release/* -DestinationPath ${{ matrix.artifact-name }}.zip -Force
 
       - name: Prepare release artifacts (Unix)
@@ -61,6 +62,7 @@ jobs:
           cp dist/voice_typing release/
           cp .env.example release/
           cp README.md release/
+          cp context.csv release/
           chmod +x release/voice_typing
           cd release
           zip -r ../${{ matrix.artifact-name }}.zip *
