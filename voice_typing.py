@@ -75,18 +75,22 @@ class VoiceTypingAssistant:
             return os.path.dirname(sys.executable)
         return os.path.dirname(os.path.abspath(__file__))
 
+    # Punctuation to strip from start/end of transcript (avoids Whisper adding sentence endings)
+    _LEADING_TRAILING_PUNCT = set('.,;:!?\'"()[]-—…·„""‹›«»')
+
     def _load_context(self):
         """
         Load context terms from context.csv in the app directory.
         The file is optional; if missing, returns None (no context).
-        CSV format: first column is the term; optional second column is a pronunciation hint
-        (e.g. "Zee-an" for Xi'an) so Whisper knows how to match speech to spelling.
+        CSV format: first column is the term (second column/pronunciation is ignored).
         Optional header row 'term' / 'word' / 'name' is skipped.
-        Terms are passed to Whisper as a hint to look out for these spellings, not a whitelist.
+        Each term appears once (case-insensitive dedup). Terms are passed to Whisper
+        as a vocabulary hint to prefer these spellings, not a whitelist.
         """
         context_path = os.path.join(self._get_app_directory(), "context.csv")
         if not os.path.isfile(context_path):
             return None
+        seen = set()
         terms = []
         try:
             with open(context_path, newline="", encoding="utf-8") as f:
@@ -100,22 +104,20 @@ class VoiceTypingAssistant:
                     # Skip header row if it looks like a label
                     if word.lower() in ("term", "word", "name") and len(terms) == 0:
                         continue
-                    # Optional pronunciation hint: "term (pronunciation)" helps Whisper match speech
-                    pronunciation = (row[1].strip() if len(row) >= 2 else "") or ""
-                    if pronunciation and pronunciation.lower() not in (
-                        "pronunciation",
-                        "pronounciation",
-                    ):
-                        terms.append(f"{word} ({pronunciation})")
-                    else:
-                        terms.append(word)
+                    # Deduplicate by lowercase key (each word once)
+                    key = word.lower()
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    terms.append(word)
             if not terms:
                 return None
-            # Whisper prompt is max 224 tokens; comma-separated list is a spelling/pronunciation guide
-            prompt = ", ".join(terms)
-            # Truncate if extremely long (roughly 224 tokens ~ 800 chars to be safe)
-            if len(prompt) > 800:
-                prompt = prompt[:797] + "..."
+            # Whisper prompt is max 224 tokens; short hint + unique terms only
+            hint = "Vocabulary hint: prefer these spellings: "
+            prompt = hint + ", ".join(terms)
+            max_len = 500
+            if len(prompt) > max_len:
+                prompt = prompt[: max_len - 1].rsplit(", ", 1)[0]
             return prompt
         except Exception as e:
             print(f"Warning: could not load context.csv: {e}")
@@ -217,11 +219,13 @@ class VoiceTypingAssistant:
                 else str(transcript).strip()
             )
 
-            # Remove trailing punctuation (periods, commas, etc.) that Whisper may add
-            # This helps prevent issues with commands or text that shouldn't have sentence endings
+            # Remove leading/trailing punctuation that Whisper may add
+            # (full stop, comma, semicolon, exclamation, question mark, quotes, etc.)
             if text:
-                # Remove trailing sentence-ending punctuation
-                while text and text[-1] in ".,;:":
+                punct = self._LEADING_TRAILING_PUNCT
+                while text and text[0] in punct:
+                    text = text[1:]
+                while text and text[-1] in punct:
                     text = text[:-1]
                 text = text.strip()
 
